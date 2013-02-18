@@ -16,9 +16,6 @@
 
 package com.android.server.power;
 
-import com.android.server.display.DisplayManagerService;
-import com.android.server.display.DisplayTransactionListener;
-
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.opengl.EGL14;
@@ -63,8 +60,8 @@ final class ElectronBeam {
     // The relative proportion of the animation to spend performing
     // the horizontal stretch effect.  The remainder is spent performing
     // the vertical stretch effect.
-    private static final float HSTRETCH_DURATION = 0.5f;
-    private static final float VSTRETCH_DURATION = 1.0f - HSTRETCH_DURATION;
+    private static final float VSTRETCH_DURATION = 0.5f;
+    private static final float HSTRETCH_DURATION = 1.0f - VSTRETCH_DURATION;
 
     // The number of frames to draw when preparing the animation so that it will
     // be ready to run smoothly.  We use 3 frames because we are triple-buffered.
@@ -75,13 +72,14 @@ final class ElectronBeam {
     private boolean mPrepared;
     private int mMode;
 
-    private final DisplayManagerService mDisplayManager;
+    private final Display mDisplay;
+    private final DisplayInfo mDisplayInfo = new DisplayInfo();
     private int mDisplayLayerStack; // layer stack associated with primary display
+    private int mDisplayRotation;
     private int mDisplayWidth;      // real width, not rotated
     private int mDisplayHeight;     // real height, not rotated
     private SurfaceSession mSurfaceSession;
     private Surface mSurface;
-    private NaturalSurfaceLayout mSurfaceLayout;
     private EGLDisplay mEglDisplay;
     private EGLConfig mEglConfig;
     private EGLContext mEglContext;
@@ -113,8 +111,8 @@ final class ElectronBeam {
      */
     public static final int MODE_FADE = 2;
 
-    public ElectronBeam(DisplayManagerService displayManager) {
-        mDisplayManager = displayManager;
+    public ElectronBeam(Display display) {
+        mDisplay = display;
     }
 
     /**
@@ -131,12 +129,18 @@ final class ElectronBeam {
 
         mMode = mode;
 
-        // Get the display size and layer stack.
-        // This is not expected to change while the electron beam surface is showing.
-        DisplayInfo displayInfo = mDisplayManager.getDisplayInfo(Display.DEFAULT_DISPLAY);
-        mDisplayLayerStack = displayInfo.layerStack;
-        mDisplayWidth = displayInfo.getNaturalWidth();
-        mDisplayHeight = displayInfo.getNaturalHeight();
+        // Get the display size and adjust it for rotation.
+        mDisplay.getDisplayInfo(mDisplayInfo);
+        mDisplayLayerStack = mDisplay.getLayerStack();
+        mDisplayRotation = mDisplayInfo.rotation;
+        if (mDisplayRotation == Surface.ROTATION_90
+                || mDisplayRotation == Surface.ROTATION_270) {
+            mDisplayWidth = mDisplayInfo.logicalHeight;
+            mDisplayHeight = mDisplayInfo.logicalWidth;
+        } else {
+            mDisplayWidth = mDisplayInfo.logicalWidth;
+            mDisplayHeight = mDisplayInfo.logicalHeight;
+        }
 
         // Prepare the surface for drawing.
         if (!tryPrepare()) {
@@ -339,16 +343,16 @@ final class ElectronBeam {
     }
 
     private static void setVStretchQuad(FloatBuffer vtx, float dw, float dh, float a) {
-        final float w = dw + (dw * a);
-        final float h = dh - (dh * a);
+        final float w = dw - (dw * a);
+        final float h = dh + (dh * a);
         final float x = (dw - w) * 0.5f;
         final float y = (dh - h) * 0.5f;
         setQuad(vtx, x, y, w, h);
     }
 
     private static void setHStretchQuad(FloatBuffer vtx, float dw, float dh, float a) {
-        final float w = dw + (dw * a);
-        final float h = 1.0f;
+        final float w = 1.0f;
+        final float h = dw + (dw * a);
         final float x = (dw - w) * 0.5f;
         final float y = (dh - h) * 0.5f;
         setQuad(vtx, x, y, w, h);
@@ -547,8 +551,24 @@ final class ElectronBeam {
             mSurface.setLayerStack(mDisplayLayerStack);
             mSurface.setSize(mDisplayWidth, mDisplayHeight);
 
-            mSurfaceLayout = new NaturalSurfaceLayout(mDisplayManager, mSurface);
-            mSurfaceLayout.onDisplayTransaction();
+            switch (mDisplayRotation) {
+                case Surface.ROTATION_0:
+                    mSurface.setPosition(0, 0);
+                    mSurface.setMatrix(1, 0, 0, 1);
+                    break;
+                case Surface.ROTATION_90:
+                    mSurface.setPosition(0, mDisplayWidth);
+                    mSurface.setMatrix(0, -1, 1, 0);
+                    break;
+                case Surface.ROTATION_180:
+                    mSurface.setPosition(mDisplayWidth, mDisplayHeight);
+                    mSurface.setMatrix(-1, 0, 0, -1);
+                    break;
+                case Surface.ROTATION_270:
+                    mSurface.setPosition(mDisplayHeight, 0);
+                    mSurface.setMatrix(0, 1, -1, 0);
+                    break;
+            }
         } finally {
             Surface.closeTransaction();
         }
@@ -581,8 +601,6 @@ final class ElectronBeam {
 
     private void destroySurface() {
         if (mSurface != null) {
-            mSurfaceLayout.dispose();
-            mSurfaceLayout = null;
             Surface.openTransaction();
             try {
                 mSurface.destroy();
@@ -693,63 +711,10 @@ final class ElectronBeam {
         pw.println("  mPrepared=" + mPrepared);
         pw.println("  mMode=" + mMode);
         pw.println("  mDisplayLayerStack=" + mDisplayLayerStack);
+        pw.println("  mDisplayRotation=" + mDisplayRotation);
         pw.println("  mDisplayWidth=" + mDisplayWidth);
         pw.println("  mDisplayHeight=" + mDisplayHeight);
         pw.println("  mSurfaceVisible=" + mSurfaceVisible);
         pw.println("  mSurfaceAlpha=" + mSurfaceAlpha);
-    }
-
-    /**
-     * Keeps a surface aligned with the natural orientation of the device.
-     * Updates the position and transformation of the matrix whenever the display
-     * is rotated.  This is a little tricky because the display transaction
-     * callback can be invoked on any thread, not necessarily the thread that
-     * owns the electron beam.
-     */
-    private static final class NaturalSurfaceLayout implements DisplayTransactionListener {
-        private final DisplayManagerService mDisplayManager;
-        private Surface mSurface;
-
-        public NaturalSurfaceLayout(DisplayManagerService displayManager, Surface surface) {
-            mDisplayManager = displayManager;
-            mSurface = surface;
-            mDisplayManager.registerDisplayTransactionListener(this);
-        }
-
-        public void dispose() {
-            synchronized (this) {
-                mSurface = null;
-            }
-            mDisplayManager.unregisterDisplayTransactionListener(this);
-        }
-
-        @Override
-        public void onDisplayTransaction() {
-            synchronized (this) {
-                if (mSurface == null) {
-                    return;
-                }
-
-                DisplayInfo displayInfo = mDisplayManager.getDisplayInfo(Display.DEFAULT_DISPLAY);
-                switch (displayInfo.rotation) {
-                    case Surface.ROTATION_0:
-                        mSurface.setPosition(0, 0);
-                        mSurface.setMatrix(1, 0, 0, 1);
-                        break;
-                    case Surface.ROTATION_90:
-                        mSurface.setPosition(0, displayInfo.logicalHeight);
-                        mSurface.setMatrix(0, -1, 1, 0);
-                        break;
-                    case Surface.ROTATION_180:
-                        mSurface.setPosition(displayInfo.logicalWidth, displayInfo.logicalHeight);
-                        mSurface.setMatrix(-1, 0, 0, -1);
-                        break;
-                    case Surface.ROTATION_270:
-                        mSurface.setPosition(displayInfo.logicalWidth, 0);
-                        mSurface.setMatrix(0, 1, -1, 0);
-                        break;
-                }
-            }
-        }
     }
 }
