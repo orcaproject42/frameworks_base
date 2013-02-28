@@ -113,6 +113,13 @@ public class NotificationPanelView extends PanelView {
     }
 
     @Override
+    protected void onDetachedFromWindow() {
+        getContext().getContentResolver().unregisterContentObserver(mEnableObserver);
+        getContext().getContentResolver().unregisterContentObserver(mChangeSideObserver);
+        super.onDetachedFromWindow();
+    }
+
+    @Override
     public void fling(float vel, boolean always) {
         GestureRecorder gr =
                 ((PhoneStatusBarView) mBar).mBar.getGestureRecorder();
@@ -237,7 +244,12 @@ public class NotificationPanelView extends PanelView {
                 if (getMeasuredHeight() < mHandleBarHeight) {
                     mStatusBar.switchToSettings();
                 } else {
-                    mStatusBar.flipToSettings();
+                    // Do not flip if the drag event started within the top bar
+                    if (MotionEvent.ACTION_DOWN == event.getActionMasked() && event.getY(0) < mHandleBarHeight ) {
+                        mStatusBar.switchToSettings();
+                    } else {
+                        mStatusBar.flipToSettings();
+                    }
                 }
                 mOkToFlip = false;            
             } else if (mSwipeTriggered) {

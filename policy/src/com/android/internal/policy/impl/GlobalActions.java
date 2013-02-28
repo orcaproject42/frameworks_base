@@ -139,6 +139,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
     private boolean mEnableScreenshotToggle = false;
     private boolean mEnableTorchToggle = false;
     private boolean mEnableAirplaneToggle = true;
+    private boolean mShowRebootOnLock = true;
     private static int rebootIndex = 0;
     private Profile mChosenProfile;
 
@@ -248,6 +249,9 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
                 Settings.System.POWER_DIALOG_SHOW_NAVBAR_HIDE, false);
         mNavBarHideToggle = new NavBarAction(mHandler);
 
+        mShowRebootOnLock = Settings.System.getBoolean(mContext.getContentResolver(),
+                Settings.System.POWER_DIALOG_SHOW_REBOOT_KEYGUARD, true);
+
         mEnableAirplaneToggle = Settings.System.getBoolean(mContext.getContentResolver(),
                 Settings.System.POWER_DIALOG_SHOW_AIRPLANE_TOGGLE, true);
         mExpandDesktopModeOn = new ToggleAction(
@@ -349,7 +353,11 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
 
                     @Override
                     public boolean showDuringKeyguard() {
-                        return true;
+                        if (mShowRebootOnLock) {
+                            return true;
+                        } else {
+                            return false;
+                        }
                     }
 
                     @Override
@@ -655,18 +663,23 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
     }
 
-    public void showProfileDialog(){
-        final ProfileManager profileManager = (ProfileManager)mContext.getSystemService(Context.PROFILE_SERVICE);
+    public void showProfileDialog() {
+        // pre-create GlobalActions dialog if necessary
+        if(mDialog == null)
+            mDialog = createDialog();
+
+        final ProfileManager profileManager = (ProfileManager) mContext
+                .getSystemService(Context.PROFILE_SERVICE);
 
         final Profile[] profiles = profileManager.getProfiles();
         UUID activeProfile = profileManager.getActiveProfile().getUuid();
         final CharSequence[] names = new CharSequence[profiles.length];
 
-        int i=0;
+        int i = 0;
         int checkedItem = 0;
 
-        for(Profile profile : profiles) {
-            if(profile.getUuid().equals(activeProfile)) {
+        for (Profile profile : profiles) {
+            if (profile.getUuid().equals(activeProfile)) {
                 checkedItem = i;
                 mChosenProfile = profile;
             }
@@ -675,26 +688,15 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
 
         final AlertDialog.Builder ab = new AlertDialog.Builder(mContext);
 
-        AlertDialog dialog = ab
-                .setTitle(R.string.global_action_choose_profile)
-                .setSingleChoiceItems(names, checkedItem, new DialogInterface.OnClickListener() {
+        AlertDialog dialog = ab.setSingleChoiceItems(names, checkedItem,
+                new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
                         if (which < 0)
                             return;
                         mChosenProfile = profiles[which];
+                        profileManager.setActiveProfile(mChosenProfile.getUuid());
+                        dialog.cancel();
                     }
-                })
-                .setPositiveButton(com.android.internal.R.string.yes,
-                        new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int which) {
-                                profileManager.setActiveProfile(mChosenProfile.getUuid());
-                            }
-                        })
-                .setNegativeButton(com.android.internal.R.string.no,
-                        new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int which) {
-                                dialog.cancel();
-                            }
                 }).create();
         dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_DIALOG);
         dialog.show();

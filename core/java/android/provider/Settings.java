@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2006 The Android Open Source Project
+ * Copyright (C) 2012 ParanoidAndroid Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2529,6 +2530,13 @@ public final class Settings {
          */
         public static final String RAM_USAGE_BAR = "ram_usage_bar";
 
+        /**
+         * Goodbye fullscreen keyboard
+         *
+         * @hide
+         */
+        public static final String FULLSCREEN_KEYBOARD = "fullscreen_keyboard";
+
        /**
         * Key to store Torch state.
         * @hide 
@@ -2803,6 +2811,12 @@ public final class Settings {
          */
         public static final String POWER_DIALOG_SHOW_TORCH_TOGGLE = "power_dialog_show_torch_toggle";
 
+         /**
+         * Show the Reboot on lockscreen dialog in Power menu
+         * @hide
+         */
+        public static final String POWER_DIALOG_SHOW_REBOOT_KEYGUARD = "power_dialog_show_reboot_keyguard";
+
         /**
          * If checked hide extra system bar stuff
          * ie compatmode button and extra ime switcher.
@@ -2981,6 +2995,12 @@ public final class Settings {
          * @hide
          */
         public static final String PIE_SEARCH = "pie_search";
+
+        /**
+         * Pie will not rotate. Should default to 0 (no, rotate)
+         * @hide
+         */
+        public static final String PIE_STICK = "pie_stick";
 
         /**
          * Pie last app, should default to 0 (no, show only when needed)
@@ -3386,6 +3406,22 @@ public final class Settings {
          * @hide
          */
         public static final String SYSTEM_PROFILES_ENABLED = "system_profiles_enabled";
+
+        /**
+         * Low battery warning dialog and sound
+         * 0 = off
+         * 1 = dialog only
+         * 2 = sound only
+         * 3 = dialog and sound
+         * @hide
+         */
+        public static final String POWER_UI_LOW_BATTERY_WARNING_POLICY = "power_ui_low_battery_warning_policy";
+
+        /**	
+         * Allows to show the background activity back the lockscreen
+         * @hide
+         */
+        public static final String LOCKSCREEN_SEE_THROUGH = "lockscreen_see_through";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
@@ -5272,6 +5308,12 @@ public final class Settings {
          * @hide
          */
         public static final String SCREENSAVER_DEFAULT_COMPONENT = "screensaver_default_component";
+
+        /**
+         * Notifications Expand Behaviour
+         * @hide
+         */
+        public static final String NOTIFICATIONS_BEHAVIOUR = "notifications_behaviour";
 
         /**
          * This are the settings to be backed up.
